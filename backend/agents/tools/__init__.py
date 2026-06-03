@@ -54,6 +54,7 @@ from .audio_session import (
     start_listening,
     end_listening,
 )
+from .synthesis import synthesize_verdict
 
 ALL_TOOLS = [
     # Portfolio + state
@@ -76,4 +77,6 @@ ALL_TOOLS = [
     # Audio session
     start_listening,
     end_listening,
+    # Synthesis
+    synthesize_verdict,
 ]

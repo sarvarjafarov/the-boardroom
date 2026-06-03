@@ -191,6 +191,9 @@ async def end_source(body: EndBody) -> dict[str, Any]:
             await proc.flush()
         finally:
             proc.cleanup()
+    session = registry.get(body.audio_id)
+    ticker = session.ticker if session else None
+    label = session.label if session else "audio source"
     await registry.stop(body.audio_id)
     from agents.tools._mcp_client import mcp_call
     await mcp_call("update-many", {
@@ -199,7 +202,65 @@ async def end_source(body: EndBody) -> dict[str, Any]:
         "filter": {"_id": body.audio_id},
         "update": {"$set": {"status": "ended"}},
     })
-    return {"ok": True}
+
+    # Auto-synthesize the verdict at session end. This is the moment the
+    # user-facing artifact (the verdict card) materializes.
+    verdict: dict[str, Any] | None = None
+    if ticker:
+        from agents.chairman_synthesis import ChairmanSynthesizer
+        synth = ChairmanSynthesizer()
+        try:
+            verdict = await synth.synthesize(
+                audio_id=body.audio_id,
+                ticker=ticker,
+                source_label=label,
+                user_id="demo",
+            )
+        except Exception as exc:
+            return {"ok": True, "verdict_error": str(exc)}
+    return {"ok": True, "verdict": verdict}
+
+
+@app.get("/api/verdict/{audio_id}")
+async def get_verdict(audio_id: str) -> dict[str, Any]:
+    """Read the persisted verdict for a finished audio source."""
+    from agents.tools._mcp_client import mcp_call
+    rows = await mcp_call("find", {
+        "database": "boardroom",
+        "collection": "verdicts",
+        "filter": {"audio_id": audio_id},
+        "sort": {"_id": -1},
+        "limit": 1,
+    })
+    rows = rows if isinstance(rows, list) else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="no verdict for that audio_id")
+    return rows[0]
+
+
+class SynthesizeNowBody(BaseModel):
+    audio_id: str
+    ticker: str
+    source_label: str = "live audio source"
+    user_id: str = "demo"
+
+
+@app.post("/api/verdict/synthesize_now")
+async def synthesize_now(body: SynthesizeNowBody) -> dict[str, Any]:
+    """Trigger an immediate verdict synthesis for a still-running session.
+    Useful when the user taps 'get current verdict' before the source ends."""
+    from agents.chairman_synthesis import ChairmanSynthesizer
+    synth = ChairmanSynthesizer()
+    try:
+        verdict = await synth.synthesize(
+            audio_id=body.audio_id,
+            ticker=body.ticker,
+            source_label=body.source_label,
+            user_id=body.user_id,
+        )
+        return {"ok": True, "verdict": verdict}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # --- Tab share audio inbound WebSocket -----------------------------------

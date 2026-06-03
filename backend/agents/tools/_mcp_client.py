@@ -140,11 +140,25 @@ def _get_pymongo_client():
     global _pymongo_client
     if _pymongo_client is None:
         from pymongo import MongoClient
+        from pymongo.read_preferences import ReadPreference
         import certifi
         uri = _MONGODB_CONN
         if not uri:
             raise RuntimeError("MONGODB_URI / MDB_MCP_CONNECTION_STRING is not set")
-        _pymongo_client = MongoClient(uri, tlsCAFile=certifi.where())
+        # Atlas M0 free tier occasionally fails SSL handshakes on the primary
+        # shard. readPreference=secondaryPreferred lets us continue reading
+        # from healthy secondaries when the primary is in TLS distress.
+        # Writes still go to the primary; on primary failure we'll surface
+        # the error and the retry logic in mcp_call / mcp_call_sync will
+        # back off.
+        _pymongo_client = MongoClient(
+            uri,
+            tlsCAFile=certifi.where(),
+            read_preference=ReadPreference.SECONDARY_PREFERRED,
+            retryReads=True,
+            retryWrites=True,
+            serverSelectionTimeoutMS=15000,
+        )
     return _pymongo_client
 
 
@@ -165,9 +179,13 @@ def _doc_clean(doc: dict[str, Any]) -> dict[str, Any]:
 
 async def _pymongo_fallback(tool: str, args: dict[str, Any]) -> Any:
     """Implements just the MCP tools we actually call. Wraps the sync pymongo
-    operation in asyncio.to_thread to keep the FastAPI event loop free."""
+    operation in asyncio.to_thread to keep the FastAPI event loop free.
+
+    Retries up to 3 times with backoff on Atlas SSL flakiness."""
     db_name = args.get("database") or os.getenv("MONGODB_DB", "boardroom")
     coll_name = args.get("collection")
+
+    from pymongo.errors import AutoReconnect, ServerSelectionTimeoutError
 
     def _run() -> Any:
         client = _get_pymongo_client()
@@ -202,26 +220,60 @@ async def _pymongo_fallback(tool: str, args: dict[str, Any]) -> Any:
             return "connected"
         raise NotImplementedError(f"pymongo fallback does not implement tool {tool!r}")
 
-    return await asyncio.to_thread(_run)
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            return await asyncio.to_thread(_run)
+        except (AutoReconnect, ServerSelectionTimeoutError) as exc:
+            last_exc = exc
+            global _pymongo_client
+            _pymongo_client = None
+            await asyncio.sleep(0.6 * (attempt + 1))
+            continue
+    if last_exc:
+        raise last_exc
+    return None
 
 
 # --- Sync entry point (for persona loader at agent construction time) -----
 
 def mcp_call_sync(tool: str, args: dict[str, Any]) -> Any:
     """Blocking variant. Used by the persona loader which runs at module
-    import time (before any event loop exists)."""
-    # Bypass MCP and go straight to pymongo for the sync path — much simpler
-    # than starting a temporary event loop just for the streamablehttp_client.
+    import time (before any event loop exists).
+
+    Atlas M0 free-tier shards intermittently fail SSL handshakes under
+    contention. We retry up to 4 times with short backoffs so the
+    persona loader survives a flaky shard rather than nuking the agent
+    start-up path.
+    """
+    import time as _time
+    from pymongo.errors import AutoReconnect, ServerSelectionTimeoutError
+
     db_name = args.get("database") or os.getenv("MONGODB_DB", "boardroom")
     coll_name = args.get("collection")
-    client = _get_pymongo_client()
-    db = client[db_name]
-    if tool == "find":
-        filt = args.get("filter") or {}
-        cur = db[coll_name].find(filt)
-        if args.get("sort"):
-            cur = cur.sort([(k, v) for k, v in args["sort"].items()])
-        if args.get("limit"):
-            cur = cur.limit(int(args["limit"]))
-        return [_doc_clean(d) for d in cur]
-    raise NotImplementedError(f"mcp_call_sync does not implement tool {tool!r}")
+
+    last_exc: Exception | None = None
+    for attempt in range(4):
+        try:
+            client = _get_pymongo_client()
+            db = client[db_name]
+            if tool == "find":
+                filt = args.get("filter") or {}
+                cur = db[coll_name].find(filt)
+                if args.get("sort"):
+                    cur = cur.sort([(k, v) for k, v in args["sort"].items()])
+                if args.get("limit"):
+                    cur = cur.limit(int(args["limit"]))
+                return [_doc_clean(d) for d in cur]
+            raise NotImplementedError(f"mcp_call_sync does not implement tool {tool!r}")
+        except (AutoReconnect, ServerSelectionTimeoutError) as exc:
+            last_exc = exc
+            # Reset the cached client so the next attempt opens a fresh
+            # topology connection (might land on a healthier shard).
+            global _pymongo_client
+            _pymongo_client = None
+            _time.sleep(0.6 * (attempt + 1))
+            continue
+    if last_exc:
+        raise last_exc
+    return []
