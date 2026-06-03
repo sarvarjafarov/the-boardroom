@@ -30,6 +30,7 @@ from pydantic import BaseModel
 from audio import SourceType, registry
 from audio.line_processor import LineProcessor
 from agents.director_engine import start_engine_for_session, stop_engine_for_session
+from agents.debate_engine import start_debate_for_session, stop_debate_for_session
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 _log = logging.getLogger("boardroom.main")
@@ -104,8 +105,9 @@ async def start_youtube_live(body: StartYouTubeBody) -> dict[str, Any]:
         _processors.pop(audio_id, None)
         raise HTTPException(status_code=400, detail=f"youtube_live start failed: {exc}")
 
-    # Spin up the 4 directors against this session.
+    # Spin up the 4 directors + the debate engine against this session.
     await start_engine_for_session(session)
+    await start_debate_for_session(session)
 
     # Persist source record in MongoDB.
     from agents.tools._mcp_client import mcp_call
@@ -149,8 +151,9 @@ async def start_tab_share(body: StartTabShareBody) -> dict[str, Any]:
     session.on_line(processor.handle)
     await session.start()
 
-    # Spin up the 4 directors against this session.
+    # Spin up the 4 directors + the debate engine against this session.
     await start_engine_for_session(session)
+    await start_debate_for_session(session)
 
     from agents.tools._mcp_client import mcp_call
     await mcp_call("insert-many", {
@@ -180,6 +183,7 @@ class EndBody(BaseModel):
 
 @app.post("/api/sources/end")
 async def end_source(body: EndBody) -> dict[str, Any]:
+    await stop_debate_for_session(body.audio_id)
     await stop_engine_for_session(body.audio_id)
     proc = _processors.pop(body.audio_id, None)
     if proc:
