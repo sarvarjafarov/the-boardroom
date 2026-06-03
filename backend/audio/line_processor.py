@@ -65,6 +65,22 @@ class LineProcessor:
             line.speaker_role = cached.get("role")
             line.speaker_name = cached.get("name")
 
+        # Publish to the live UI bus right now — topics fill in
+        # asynchronously when the batch flushes.
+        try:
+            from dashboard_bus import bus
+            bus.publish(self.audio_id, "transcript_line", {
+                "idx": line.idx,
+                "ts_from_start": line.ts_from_start,
+                "text": line.text,
+                "speaker_raw": line.speaker_raw,
+                "speaker_role": line.speaker_role,
+                "speaker_name": line.speaker_name,
+                "topics": list(line.topics or []),
+            })
+        except Exception:
+            pass
+
         # Batch for topic classification + persistence.
         async with self._lock:
             self._pending.append(line)

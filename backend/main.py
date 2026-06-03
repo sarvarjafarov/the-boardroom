@@ -25,12 +25,14 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from audio import SourceType, registry
 from audio.line_processor import LineProcessor
 from agents.director_engine import start_engine_for_session, stop_engine_for_session
 from agents.debate_engine import start_debate_for_session, stop_debate_for_session
+from dashboard_bus import bus
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 _log = logging.getLogger("boardroom.main")
@@ -109,9 +111,10 @@ async def start_youtube_live(body: StartYouTubeBody) -> dict[str, Any]:
     await start_engine_for_session(session)
     await start_debate_for_session(session)
 
-    # Persist source record in MongoDB.
+    # Persist source record in MongoDB — fire-and-forget so the request
+    # returns even if Atlas writes are temporarily slow.
     from agents.tools._mcp_client import mcp_call
-    await mcp_call("insert-many", {
+    asyncio.create_task(mcp_call("insert-many", {
         "database": "boardroom",
         "collection": "audio_sources",
         "documents": [{
@@ -124,7 +127,7 @@ async def start_youtube_live(body: StartYouTubeBody) -> dict[str, Any]:
             "pinned": False,
             "status": "listening",
         }],
-    })
+    }))
     return {"audio_id": audio_id, "status": "listening"}
 
 
@@ -183,42 +186,54 @@ class EndBody(BaseModel):
 
 @app.post("/api/sources/end")
 async def end_source(body: EndBody) -> dict[str, Any]:
-    await stop_debate_for_session(body.audio_id)
-    await stop_engine_for_session(body.audio_id)
+    # Every Atlas-side operation here is non-fatal — we never want the UI
+    # to hang on /api/sources/end. The verdict still surfaces via the
+    # dashboard WS verdict event from the background synthesis task.
+    try:
+        await stop_debate_for_session(body.audio_id)
+    except Exception:
+        pass
+    try:
+        await stop_engine_for_session(body.audio_id)
+    except Exception:
+        pass
     proc = _processors.pop(body.audio_id, None)
     if proc:
         try:
             await proc.flush()
+        except Exception:
+            pass
         finally:
             proc.cleanup()
     session = registry.get(body.audio_id)
     ticker = session.ticker if session else None
     label = session.label if session else "audio source"
-    await registry.stop(body.audio_id)
+    try:
+        await registry.stop(body.audio_id)
+    except Exception:
+        pass
     from agents.tools._mcp_client import mcp_call
-    await mcp_call("update-many", {
+    asyncio.create_task(mcp_call("update-many", {
         "database": "boardroom",
         "collection": "audio_sources",
         "filter": {"_id": body.audio_id},
         "update": {"$set": {"status": "ended"}},
-    })
+    }))
 
-    # Auto-synthesize the verdict at session end. This is the moment the
-    # user-facing artifact (the verdict card) materializes.
-    verdict: dict[str, Any] | None = None
+    # Trigger the Chairman synthesis in the background; the frontend will
+    # receive the verdict via the dashboard WS `verdict` event the moment
+    # synthesis completes. The HTTP response returns immediately so the
+    # UI doesn't hang on Atlas write latency.
     if ticker:
         from agents.chairman_synthesis import ChairmanSynthesizer
         synth = ChairmanSynthesizer()
-        try:
-            verdict = await synth.synthesize(
-                audio_id=body.audio_id,
-                ticker=ticker,
-                source_label=label,
-                user_id="demo",
-            )
-        except Exception as exc:
-            return {"ok": True, "verdict_error": str(exc)}
-    return {"ok": True, "verdict": verdict}
+        asyncio.create_task(synth.synthesize(
+            audio_id=body.audio_id,
+            ticker=ticker,
+            source_label=label,
+            user_id="demo",
+        ))
+    return {"ok": True, "synthesizing": bool(ticker)}
 
 
 @app.get("/api/verdict/{audio_id}")
@@ -320,3 +335,216 @@ async def ws_transcripts_out(ws: WebSocket, audio_id: str) -> None:
         pass
     finally:
         session.unsubscribe(q)
+
+
+# --- Unified dashboard WebSocket (the live UI's single subscription) -----
+
+@app.websocket("/ws/dashboard/{audio_id}")
+async def ws_dashboard(ws: WebSocket, audio_id: str) -> None:
+    """The frontend's one WebSocket per active boardroom.
+
+    Streams every typed event for the session:
+      transcript_line | score_block | argument | verdict | portfolio_impact | ping
+    """
+    await ws.accept()
+    q = await bus.subscribe(audio_id)
+    try:
+        while True:
+            try:
+                msg = await asyncio.wait_for(q.get(), timeout=20.0)
+            except asyncio.TimeoutError:
+                await ws.send_text(json.dumps({"type": "ping"}))
+                continue
+            await ws.send_text(json.dumps(msg, default=str))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await bus.unsubscribe(audio_id, q)
+
+
+# --- Alpaca paper trade execution ----------------------------------------
+
+class ConfirmTradeBody(BaseModel):
+    audio_id: str
+    ticker: str
+    side: str               # buy | sell
+    qty: float
+    user_id: str = "demo"
+
+
+@app.post("/api/orders/confirm")
+async def confirm_trade(body: ConfirmTradeBody) -> dict[str, Any]:
+    """User has approved a drafted trade. Send it to Alpaca paper.
+
+    The frontend Approve button posts the impact's audio_id + ticker +
+    side + qty. We submit to Alpaca paper via the imported TradeExecutor
+    and mark the corresponding portfolio_impact draft as 'executed'.
+    """
+    from trade_executor import TradeExecutor
+    from agents.tools._mcp_client import mcp_call
+
+    side = body.side.lower().strip()
+    if side not in ("buy", "sell"):
+        raise HTTPException(status_code=400, detail="side must be 'buy' or 'sell'")
+    if body.qty <= 0:
+        raise HTTPException(status_code=400, detail="qty must be positive")
+
+    executor = TradeExecutor()
+    try:
+        result = executor.submit_order(
+            ticker=body.ticker.upper(),
+            side=side,
+            qty=int(body.qty),
+            limit_price=None,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"alpaca submit failed: {exc}")
+
+    # Mark the matching draft impact as executed.
+    try:
+        await mcp_call("update-many", {
+            "database": "boardroom",
+            "collection": "portfolio_impacts",
+            "filter": {
+                "audio_id": body.audio_id,
+                "ticker": body.ticker.upper(),
+                "side": side,
+                "status": "pending",
+            },
+            "update": {"$set": {
+                "status": "executed",
+                "alpaca_order_id": result.get("id") if isinstance(result, dict) else None,
+            }},
+        })
+    except Exception:
+        pass
+
+    # Publish so the UI can update the impact card to "executed".
+    try:
+        bus.publish(body.audio_id, "trade_executed", {
+            "ticker": body.ticker.upper(),
+            "side": side,
+            "qty": body.qty,
+            "alpaca_order_id": (result.get("id") if isinstance(result, dict) else None),
+            "status": (result.get("status") if isinstance(result, dict) else None),
+        })
+    except Exception:
+        pass
+
+    return {"ok": True, "alpaca": result}
+
+
+# --- Voice Q&A WebSocket -------------------------------------------------
+
+@app.websocket("/ws/voice_qa/{audio_id}")
+async def ws_voice_qa(ws: WebSocket, audio_id: str) -> None:
+    """Real-time voice question loop.
+
+    Frontend captures mic, sends raw 16 kHz mono Int16 PCM frames.
+    We pipe them into a lightweight Gemini Live session for transcription,
+    accumulate until the user pauses, then run the question through the
+    Chairman LlmAgent and send back the text answer (and optionally TTS
+    chunks).
+    """
+    from audio.gemini_live import GeminiLiveSession
+    from agents.root_agent import root_agent
+    from google.adk.runners import InMemoryRunner
+    from google.genai import types as genai_types
+
+    await ws.accept()
+    live = GeminiLiveSession(f"voice-{audio_id}")
+    try:
+        await live.start()
+    except Exception as exc:
+        await ws.send_text(json.dumps({"type": "error", "message": f"voice live start: {exc}"}))
+        await ws.close()
+        return
+
+    question_buffer: list[str] = []
+    silence_seconds = 0.0
+
+    async def consume_transcripts() -> None:
+        async for text, ts, _ in live.transcript_lines():
+            question_buffer.append(text)
+            await ws.send_text(json.dumps({"type": "transcript_partial", "text": text}))
+
+    transcript_task = asyncio.create_task(consume_transcripts())
+    last_frame_at = asyncio.get_event_loop().time()
+
+    try:
+        while True:
+            try:
+                msg = await asyncio.wait_for(ws.receive(), timeout=2.0)
+            except asyncio.TimeoutError:
+                # No frames for 2 s — treat the buffered transcript as a complete question.
+                if question_buffer:
+                    full_q = " ".join(question_buffer).strip()
+                    question_buffer.clear()
+                    await _run_chairman_qa(ws, audio_id, full_q)
+                continue
+            if "bytes" in msg and msg["bytes"]:
+                await live.send_pcm(msg["bytes"])
+                last_frame_at = asyncio.get_event_loop().time()
+            elif "text" in msg and msg["text"] == "stop":
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        transcript_task.cancel()
+        try:
+            await transcript_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        try:
+            await live.stop()
+        except Exception:
+            pass
+
+
+async def _run_chairman_qa(ws: WebSocket, audio_id: str, question: str) -> None:
+    """Hand a transcribed question to the Chairman LlmAgent and stream back text."""
+    if not question or len(question) < 3:
+        return
+    from agents.root_agent import root_agent
+    from google.adk.runners import InMemoryRunner
+    from google.genai import types as genai_types
+
+    runner = InMemoryRunner(agent=root_agent, app_name="boardroom_chairman")
+    try:
+        session = await runner.session_service.create_session(
+            app_name="boardroom_chairman", user_id="demo",
+        )
+        # Prepend a context line so the Chairman knows which audio we're in.
+        prompt = (
+            f"You are in the live boardroom for audio_id={audio_id}. "
+            f"User asked via voice: '{question}'. "
+            "Identify which 1-3 directors are most relevant, fetch their score_blocks "
+            "from MongoDB if helpful, and answer in 1-3 sentences. "
+            "Stay in the Chairman voice — composed, structured, decisional."
+        )
+        async for event in runner.run_async(
+            user_id="demo",
+            session_id=session.id,
+            new_message=genai_types.Content(
+                role="user",
+                parts=[genai_types.Part(text=prompt)],
+            ),
+        ):
+            content = getattr(event, "content", None)
+            if not content or not getattr(content, "parts", None):
+                continue
+            for part in content.parts:
+                if getattr(part, "text", None):
+                    await ws.send_text(json.dumps({
+                        "type": "chairman_text",
+                        "text": part.text,
+                    }))
+    except Exception as exc:
+        await ws.send_text(json.dumps({"type": "error", "message": f"chairman: {exc}"}))
+
+
+# --- Static frontend mount (served at /) ---------------------------------
+
+_FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+if os.path.isdir(_FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")

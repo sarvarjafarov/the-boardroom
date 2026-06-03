@@ -189,6 +189,13 @@ class ChairmanSynthesizer:
             "ts": time.time(),
         }
         await self._persist_verdict(verdict)
+        # Publish the final verdict to the UI bus so the verdict card
+        # animates in the moment the synthesis completes.
+        try:
+            from dashboard_bus import bus
+            bus.publish(audio_id, "verdict", verdict)
+        except Exception:
+            pass
         _log.info(
             "chairman synthesis done audio_id=%s action=%s score=%d confidence=%s drafts=%d",
             audio_id, verdict["final_action"], verdict["final_score"],
@@ -489,9 +496,13 @@ class ChairmanSynthesizer:
                 ],
             })
 
-        # Persist to MongoDB for later inspection / UI rendering. Non-fatal:
-        # if Atlas is transiently unreachable we still want the user-facing
-        # verdict to be returned with the in-memory impacts.
+        # Publish each impact + persist (non-fatal).
+        try:
+            from dashboard_bus import bus
+            for imp in impacts:
+                bus.publish(audio_id, "portfolio_impact", imp)
+        except Exception:
+            pass
         if impacts:
             try:
                 await mcp_call("insert-many", {

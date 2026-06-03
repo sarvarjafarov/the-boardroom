@@ -300,34 +300,42 @@ class DebateEngine:
 
         emitted = 0
         ts = float(high_block.get("ts_from_start", 0.0))
+
+        # Publish to the live UI bus + persist (non-fatal).
+        from dashboard_bus import bus
+
         if isinstance(high_arg, dict) and high_arg.get("claim"):
+            arg = {
+                "audio_id": self.audio_id, "topic": topic, "ts_from_start": ts,
+                "from_director": high_dir, "to_director": low_dir,
+                "claim": high_arg["claim"],
+                "rebuttal_target_evidence": high_arg.get("rebuttal_target_evidence", ""),
+                "supports_line_idx": int(high_arg.get("supports_line_idx", -1) or -1),
+            }
             try:
-                await record_argument(
-                    audio_id=self.audio_id,
-                    topic=topic,
-                    ts_from_start=ts,
-                    from_director=high_dir,
-                    to_director=low_dir,
-                    claim=high_arg["claim"],
-                    rebuttal_target_evidence=high_arg.get("rebuttal_target_evidence", ""),
-                    supports_line_idx=int(high_arg.get("supports_line_idx", -1) or -1),
-                )
+                bus.publish(self.audio_id, "argument", arg)
+            except Exception:
+                pass
+            try:
+                await record_argument(**arg)
                 emitted += 1
             except Exception as exc:
                 _log.warning("record_argument failed: %s", exc)
 
         if isinstance(low_arg, dict) and low_arg.get("claim"):
+            arg = {
+                "audio_id": self.audio_id, "topic": topic, "ts_from_start": ts,
+                "from_director": low_dir, "to_director": high_dir,
+                "claim": low_arg["claim"],
+                "rebuttal_target_evidence": low_arg.get("rebuttal_target_evidence", ""),
+                "supports_line_idx": int(low_arg.get("supports_line_idx", -1) or -1),
+            }
             try:
-                await record_argument(
-                    audio_id=self.audio_id,
-                    topic=topic,
-                    ts_from_start=ts,
-                    from_director=low_dir,
-                    to_director=high_dir,
-                    claim=low_arg["claim"],
-                    rebuttal_target_evidence=low_arg.get("rebuttal_target_evidence", ""),
-                    supports_line_idx=int(low_arg.get("supports_line_idx", -1) or -1),
-                )
+                bus.publish(self.audio_id, "argument", arg)
+            except Exception:
+                pass
+            try:
+                await record_argument(**arg)
                 emitted += 1
             except Exception as exc:
                 _log.warning("record_argument failed: %s", exc)

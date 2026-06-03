@@ -116,7 +116,9 @@ class DirectorAgent:
             return
         self._running = True
         # Subscribe via push callback so we don't compete with other subscribers.
-        self.session.on_line(self._on_line)
+        # The AudioSession awaits each callback, so we register the async
+        # wrapper (the sync version is kept for direct dispatch in tests).
+        self.session.on_line(self._on_line_async_compatible)
         self._main_task = asyncio.create_task(
             self._emission_loop(), name=f"director-{self.director_id}-{self.session.audio_id}"
         )
@@ -319,20 +321,38 @@ class DirectorAgent:
         else:
             label = "neutral"
 
-        await record_score_block(
-            audio_id=self.session.audio_id,
-            director=self.director_id,
-            topic=topic,
-            ts_from_start=recent[-1].ts_from_start,
-            score=score,
-            label=label,
-            confidence=score_block.get("confidence", "MEDIUM"),
-            reason=score_block.get("reason", ""),
-            drivers=score_block.get("drivers", [])[:8],
-            supporting_line_indices=score_block.get("supporting_line_indices", [])[:8],
-            sample_size=len(recent),
-            freshness="fresh",
-        )
+        sb = {
+            "audio_id": self.session.audio_id,
+            "director": self.director_id,
+            "topic": topic,
+            "ts_from_start": recent[-1].ts_from_start,
+            "score": score,
+            "label": label,
+            "confidence": score_block.get("confidence", "MEDIUM"),
+            "reason": score_block.get("reason", ""),
+            "drivers": score_block.get("drivers", [])[:8],
+            "supporting_line_indices": score_block.get("supporting_line_indices", [])[:8],
+            "sample_size": len(recent),
+            "freshness": "fresh",
+        }
+        # Publish to the live UI bus first — this is non-blocking and lets
+        # the frontend render even if MongoDB persistence is slow.
+        try:
+            from dashboard_bus import bus
+            bus.publish(self.session.audio_id, "score_block", sb)
+        except Exception:
+            pass
+        # Persist (non-fatal if Atlas is flaky).
+        try:
+            await record_score_block(
+                audio_id=sb["audio_id"], director=sb["director"], topic=sb["topic"],
+                ts_from_start=sb["ts_from_start"], score=sb["score"], label=sb["label"],
+                confidence=sb["confidence"], reason=sb["reason"], drivers=sb["drivers"],
+                supporting_line_indices=sb["supporting_line_indices"],
+                sample_size=sb["sample_size"], freshness=sb["freshness"],
+            )
+        except Exception as exc:
+            _log.debug("record_score_block deferred: %s", exc)
 
         # Reset counters for this topic.
         self._unscored_lines_per_topic[topic] = 0
