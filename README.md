@@ -114,18 +114,23 @@ cd frontend && python3 -m http.server 3000
 # → http://localhost:3000
 ```
 
-Live demo: see Devpost submission for hosted URL.
+## 🌐 Live Demo
+
+**Hosted URL:** https://the-boardroom-760978959766.us-central1.run.app
+**Repo:** https://github.com/sarvarjafarov/the-boardroom
+
+Try it: paste a YouTube live URL of a financial news show, earnings webcast, or Fed presser → click *Listen live* → watch four AI directors debate it in real time → see the verdict card → optionally tap *Ask the Chairman* to ask a follow-up by voice → optionally approve the recommended Alpaca paper trade.
 
 ## Hackathon roadmap
 
-- [x] **Day 1** — Foundation: repo, LICENSE, Atlas seeded, director personas, track-record seed
-- [ ] **Day 2** — Audio pipeline: tab share + YouTube Live ingestion + Topic Router
-- [ ] **Day 3** — Director engine: 4 personas emitting score_blocks
-- [ ] **Day 4** — Debate Engine: pairwise disagreement + directed rebuttals
-- [ ] **Day 5** — Portfolio Impact Engine + Chairman synthesis + pattern matching
-- [ ] **Day 6** — Live debate UI + Voice Q&A + Alpaca paper trade
-- [ ] **Day 7** — X Spaces ingestion + polish (cards, heatmap, decision diary)
-- [ ] **Day 8** — Cloud Run deploy + 3-min demo + Devpost submission
+- [x] **Day 1** — Foundation: repo, LICENSE, Atlas seeded, 4 director personas, 12 historical track records, 8 cross-call patterns, ADK agent definition
+- [x] **Day 2** — Audio pipeline: browser-tab share + YouTube Live ingestion + Gemini Live transcription + 12-topic router + speaker diarization + MongoDB persistence
+- [x] **Day 3** — Director engine: 4 personas concurrently emitting per-topic score_blocks, persona-specific tool grounding (analyst consensus / patterns / macro / peer)
+- [x] **Day 4** — Debate Engine: pairwise disagreement detection + directed rebuttals with verbatim opponent quotes + transcript-line citations
+- [x] **Day 5** — Chairman synthesis: boardroom committee math, named dissent identification, pattern callouts with historical drawdowns, Portfolio Impact Engine, draft Alpaca trades
+- [x] **Day 6** — Live UI: 4-column real-time debate, argument bubbles, verdict card, portfolio impact panel with one-tap Alpaca approval, voice Q&A loop (mic → Gemini Live → Chairman → text)
+- [x] **Day 7** — Polish: Atlas write buffer with retry, disagreement heatmap, shareable verdict card (PNG export), decision diary, X Spaces docs
+- [x] **Day 8** — Cloud Run deploy + Devpost submission
 
 ## Documentation
 

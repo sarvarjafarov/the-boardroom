@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/**/*.pyc
+*.log
+docs/SCHEMA.md
+service-account*.json
+gcp-key*.json
+node_modules
+.cloudrun-env.yaml
