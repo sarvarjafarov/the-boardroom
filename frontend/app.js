@@ -84,6 +84,8 @@ function enterLiveStage(audioId, ticker, url) {
   $("#ticker-label").textContent = ticker ? `Ticker: ${ticker}` : "(no ticker)";
   renderDirectorColumns();
   openDashboardWS();
+  setupShareButton();
+  loadDecisionDiary();
   setStatus("listening", "bg-emerald-500");
 }
 
@@ -217,6 +219,112 @@ function updateScoreBlock(sb) {
       `;
       blocksEl.appendChild(row);
     });
+
+  // Update the disagreement heatmap too.
+  renderHeatmap();
+}
+
+// ----- Disagreement heatmap (4 directors × N topics) ----------------------
+
+function renderHeatmap() {
+  const all = [...state.latestByDirectorTopic.values()];
+  if (!all.length) return;
+  $("#heatmap-empty").classList.add("hidden");
+  const heat = $("#heatmap");
+  heat.classList.remove("hidden");
+
+  const directors = ["bull", "bear", "quant", "strategist"];
+  const topics = [...new Set(all.map((b) => b.topic))].sort();
+  const map = new Map();
+  for (const b of all) map.set(`${b.director}|${b.topic}`, b);
+
+  // Build a tiny HTML table.
+  let html = '<table class="heatmap-table"><tr><th></th>';
+  for (const t of topics) {
+    html += `<th title="${escapeHtml(t)}">${escapeHtml(t.slice(0, 8))}</th>`;
+  }
+  html += "</tr>";
+  for (const d of directors) {
+    html += `<tr><th class="text-left pr-2">${escapeHtml(directorMeta[d].name.replace("The ", ""))}</th>`;
+    for (const t of topics) {
+      const b = map.get(`${d}|${t}`);
+      if (!b) {
+        html += '<td class="heat-empty">·</td>';
+      } else {
+        const s = Math.max(0, Math.min(100, b.score));
+        // Bear directions get rose; bull directions get emerald; neutral grey.
+        let bg;
+        if (s >= 60) bg = `rgba(52,211,153,${0.25 + (s - 60) / 100})`;       // emerald
+        else if (s <= 40) bg = `rgba(251,113,133,${0.25 + (40 - s) / 100})`; // rose
+        else bg = `rgba(148,163,184,0.25)`;                                  // slate
+        html += `<td class="heatcell" style="background:${bg}" title="${escapeHtml(d)} · ${escapeHtml(t)} · ${escapeHtml(b.reason || "")}">${s}</td>`;
+      }
+    }
+    html += "</tr>";
+  }
+  html += "</table>";
+  heat.innerHTML = html;
+}
+
+// ----- Shareable verdict card ---------------------------------------------
+
+function setupShareButton() {
+  const btn = document.getElementById("share-verdict");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; btn.textContent = "rendering…";
+    try {
+      const node = document.getElementById("verdict-printable");
+      const canvas = await html2canvas(node, {
+        backgroundColor: "#0f172a",
+        scale: 2,
+        useCORS: true,
+      });
+      const url = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `boardroom-verdict-${state.ticker || "card"}.png`;
+      a.click();
+    } catch (e) {
+      console.warn(e);
+      btn.textContent = "render failed";
+    } finally {
+      setTimeout(() => { btn.disabled = false; btn.textContent = "📷 Save card"; }, 1500);
+    }
+  });
+}
+
+// ----- Decision diary -----------------------------------------------------
+
+async function loadDecisionDiary() {
+  try {
+    const r = await fetch(`${API_BASE}/api/diary/recent`);
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (!rows.length) return;
+    document.getElementById("diary-card").classList.remove("hidden");
+    const list = document.getElementById("diary-list");
+    list.innerHTML = "";
+    for (const row of rows.slice(0, 12)) {
+      const div = document.createElement("div");
+      div.className = "flex items-center justify-between border-b border-slate-800/60 py-1.5";
+      const outcome7 = row.outcome_7d_pct;
+      const outcome30 = row.outcome_30d_pct;
+      const outcomeHtml = (val, lbl) =>
+        val == null
+          ? `<span class="text-slate-500">${lbl} pending</span>`
+          : `<span class="${val >= 0 ? "text-emerald-300" : "text-rose-300"} font-mono">${lbl} ${val >= 0 ? "+" : ""}${Number(val).toFixed(1)}%</span>`;
+      div.innerHTML = `
+        <div>
+          <span class="font-mono mr-2">${escapeHtml(row.ticker || "?")}</span>
+          <span class="text-slate-300">${escapeHtml(row.action_taken || "")}</span>
+          <span class="text-slate-500"> · qty ${row.qty_delta || 0}</span>
+        </div>
+        <div class="flex gap-2 text-xs">${outcomeHtml(outcome7, "7d")} ${outcomeHtml(outcome30, "30d")}</div>
+      `;
+      list.appendChild(div);
+    }
+  } catch (e) { /* silent */ }
 }
 
 // ----- Argument bubbles ---------------------------------------------------

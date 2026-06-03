@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#0f172a" />
     <title>The Boardroom — always listening</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body class="bg-slate-950 text-slate-100 min-h-screen antialiased">
@@ -55,6 +56,14 @@
         <p class="text-xs text-slate-500 mt-3">
           Demo holdings: TSLA 12% · NVDA 18% · MSFT 16% · AAPL 10% · QQQ 20% · $50k cash
         </p>
+        <details class="mt-4 text-xs text-slate-400">
+          <summary class="cursor-pointer hover:text-slate-200">Other live sources →</summary>
+          <ul class="mt-2 space-y-1 pl-4 list-disc">
+            <li><strong>CNBC / Bloomberg TV live:</strong> paste their YouTube live URL.</li>
+            <li><strong>X Spaces:</strong> open the Space in this browser tab, click <em>Listen live</em>, then choose this tab in the share dialog with "Share tab audio" ticked. (Spaces direct ingest is on the V2 roadmap.)</li>
+            <li><strong>MP3 / MP4 upload:</strong> V2 — Day 7 polish path.</li>
+          </ul>
+        </details>
       </div>
     </section>
 
@@ -98,32 +107,49 @@
         </section>
       </div>
 
-      <!-- Argument bubbles strip -->
-      <section class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
-        <h2 class="text-xs font-semibold tracking-wider text-cyan-400 mb-3">LIVE DEBATE</h2>
-        <div id="arguments-feed" class="space-y-2 max-h-72 overflow-y-auto pr-2"></div>
-      </section>
+      <!-- Argument bubbles strip + disagreement heatmap -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <section class="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+          <h2 class="text-xs font-semibold tracking-wider text-cyan-400 mb-3">LIVE DEBATE</h2>
+          <div id="arguments-feed" class="space-y-2 max-h-72 overflow-y-auto pr-2"></div>
+        </section>
+        <section class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+          <h2 class="text-xs font-semibold tracking-wider text-cyan-400 mb-3">
+            DISAGREEMENT HEATMAP
+          </h2>
+          <div id="heatmap-empty" class="text-xs text-slate-500 italic">
+            Live as directors score. Brighter = stronger view; rose vs emerald = bear vs bull.
+          </div>
+          <div id="heatmap" class="hidden text-[10px]"></div>
+        </section>
+      </div>
 
       <!-- Verdict card -->
-      <section id="verdict-card" class="hidden bg-gradient-to-br from-cyan-900/30 to-slate-900/60 border border-cyan-700/40 rounded-2xl p-5">
-        <div class="flex items-baseline justify-between gap-3 mb-3 flex-wrap">
-          <div>
-            <div class="text-xs uppercase tracking-wider text-cyan-300">verdict</div>
+      <section id="verdict-card" class="hidden bg-gradient-to-br from-cyan-900/30 to-slate-900/60 border border-cyan-700/40 rounded-2xl p-5 relative">
+        <button
+          id="share-verdict"
+          class="absolute top-3 right-3 bg-slate-800/80 hover:bg-slate-700 text-xs text-slate-100 rounded-lg px-3 py-1.5"
+        >
+          📷 Save card
+        </button>
+        <div id="verdict-printable" class="bg-transparent">
+          <div class="text-xs uppercase tracking-wider text-cyan-300">🏛 The Boardroom · verdict</div>
+          <div class="flex items-baseline justify-between gap-3 mt-1 mb-3 flex-wrap">
             <h3 id="verdict-action" class="text-2xl font-bold"></h3>
+            <div class="text-right">
+              <div id="verdict-score" class="text-2xl font-bold font-mono"></div>
+              <div id="verdict-confidence" class="text-xs text-slate-400 uppercase tracking-wider"></div>
+            </div>
           </div>
-          <div class="text-right">
-            <div id="verdict-score" class="text-2xl font-bold font-mono"></div>
-            <div id="verdict-confidence" class="text-xs text-slate-400 uppercase tracking-wider"></div>
+          <p id="verdict-thesis" class="text-sm text-slate-200 mb-3"></p>
+          <div id="verdict-dissent" class="hidden text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-3 mb-3">
+            <div class="text-xs uppercase tracking-wider text-rose-300 mb-1">named dissent</div>
+            <div id="verdict-dissent-body" class="text-slate-200"></div>
           </div>
-        </div>
-        <p id="verdict-thesis" class="text-sm text-slate-200 mb-4"></p>
-        <div id="verdict-dissent" class="hidden text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-3 mb-3">
-          <div class="text-xs uppercase tracking-wider text-rose-300 mb-1">named dissent</div>
-          <div id="verdict-dissent-body" class="text-slate-200"></div>
-        </div>
-        <div id="verdict-patterns" class="hidden text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-3">
-          <div class="text-xs uppercase tracking-wider text-amber-300 mb-1">pattern callouts</div>
-          <div id="verdict-patterns-body" class="text-slate-200"></div>
+          <div id="verdict-patterns" class="hidden text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-3">
+            <div class="text-xs uppercase tracking-wider text-amber-300 mb-1">pattern callouts</div>
+            <div id="verdict-patterns-body" class="text-slate-200"></div>
+          </div>
         </div>
       </section>
 
@@ -131,6 +157,15 @@
       <section id="impacts-card" class="hidden bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
         <h2 class="text-xs font-semibold tracking-wider text-cyan-400 mb-3">PORTFOLIO IMPACT</h2>
         <div id="impacts-list" class="space-y-3"></div>
+      </section>
+
+      <!-- Decision diary -->
+      <section id="diary-card" class="hidden bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+        <div class="flex items-baseline justify-between mb-3">
+          <h2 class="text-xs font-semibold tracking-wider text-cyan-400">DECISION DIARY</h2>
+          <span class="text-[10px] text-slate-500">your actions · scored at +7d / +30d post-event</span>
+        </div>
+        <div id="diary-list" class="space-y-2 text-sm"></div>
       </section>
     </main>
 

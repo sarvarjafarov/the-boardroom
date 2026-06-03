@@ -42,6 +42,13 @@ from .tools._mcp_client import mcp_call
 from .tools.execution import draft_paper_trade
 from .tools.portfolio import get_portfolio, record_verdict
 
+# durable_write goes through the Atlas write queue → inline attempt with
+# automatic background retry on failure. The hot path never blocks.
+try:
+    from atlas_writer import durable_write
+except Exception:
+    durable_write = None  # type: ignore
+
 _log = logging.getLogger("boardroom.chairman_synthesis")
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
@@ -504,16 +511,23 @@ class ChairmanSynthesizer:
         except Exception:
             pass
         if impacts:
-            try:
-                await mcp_call("insert-many", {
+            if durable_write is not None:
+                await durable_write("insert-many", {
                     "database": "boardroom",
                     "collection": "portfolio_impacts",
                     "documents": impacts,
                 })
-            except Exception as exc:
-                _log.warning(
-                    "portfolio_impacts persist failed (continuing): %s", exc,
-                )
+            else:
+                try:
+                    await mcp_call("insert-many", {
+                        "database": "boardroom",
+                        "collection": "portfolio_impacts",
+                        "documents": impacts,
+                    })
+                except Exception as exc:
+                    _log.warning(
+                        "portfolio_impacts persist failed (continuing): %s", exc,
+                    )
         return impacts
 
     # --- Trade drafting --------------------------------------------------

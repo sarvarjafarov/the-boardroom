@@ -72,3 +72,16 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
 
 @keyframes pulseRed { 0%,100% { background: #ef4444 } 50% { background: #fca5a5 } }
 .voice-listening { animation: pulseRed 1.2s infinite; }
+
+/* Heatmap grid */
+.heatmap-table { width: 100%; border-collapse: separate; border-spacing: 2px; }
+.heatmap-table th, .heatmap-table td {
+  font-size: 10px; padding: 6px 4px; text-align: center; border-radius: 4px;
+}
+.heatmap-table th { color: theme('colors.slate.400'); font-weight: 600; }
+.heatmap-table td.heatcell { font-family: ui-monospace, monospace; color: white; }
+.heatmap-table td.heat-empty { background: theme('colors.slate.800'); color: theme('colors.slate.600'); }
+
+/* Verdict appearance animation */
+@keyframes verdictIn { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
+#verdict-card { animation: verdictIn 0.5s ease-out; }

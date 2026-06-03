@@ -33,6 +33,7 @@ from audio.line_processor import LineProcessor
 from agents.director_engine import start_engine_for_session, stop_engine_for_session
 from agents.debate_engine import start_debate_for_session, stop_debate_for_session
 from dashboard_bus import bus
+from atlas_writer import writer as atlas_writer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 _log = logging.getLogger("boardroom.main")
@@ -58,6 +59,16 @@ app.add_middleware(
 _processors: dict[str, LineProcessor] = {}
 
 
+@app.on_event("startup")
+async def _on_startup() -> None:
+    await atlas_writer.start()
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    await atlas_writer.stop()
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
     sessions = registry.all()
@@ -68,7 +79,33 @@ async def health() -> dict[str, Any]:
             {"audio_id": s.audio_id, "type": s.source_type.value, "label": s.label, "ticker": s.ticker}
             for s in sessions
         ],
+        "atlas_writer": atlas_writer.stats(),
     }
+
+
+@app.get("/api/debug/queue")
+async def debug_queue() -> dict[str, Any]:
+    return atlas_writer.stats()
+
+
+@app.get("/api/diary/recent")
+async def diary_recent(user_id: str = "demo", limit: int = 12) -> list[dict[str, Any]]:
+    """Most-recent decisions the user logged, with their +7d / +30d outcomes.
+
+    Powers the Decision Diary panel in the UI. Reads from MongoDB; falls
+    back to an empty array if the read times out so the UI never breaks."""
+    from agents.tools._mcp_client import mcp_call
+    try:
+        rows = await mcp_call("find", {
+            "database": "boardroom",
+            "collection": "decision_diary",
+            "filter": {"user_id": user_id},
+            "sort": {"executed_at": -1},
+            "limit": int(limit),
+        })
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
 
 
 # --- Source lifecycle -----------------------------------------------------
