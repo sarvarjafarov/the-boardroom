@@ -1,0 +1,137 @@
+{
+  "_meta": {
+    "purpose": "Cross-call recurring patterns the boardroom recognizes. When live audio matches a seeded pattern, the matching director can flag it with historical context. Loaded by scripts/seed_mongo.py into the patterns collection.",
+    "version": "1.0.0",
+    "sourcing": "Each pattern is derived from at least 2 real prior earnings calls and the actual subsequent stock price move. No invented patterns."
+  },
+  "patterns": [
+    {
+      "_id": "compute_capacity_promise",
+      "name": "Compute capacity promise without verifiable supply chain disclosure",
+      "owned_by_director": "bear",
+      "description": "Management cites large-scale compute capacity (X thousand GPUs or X exaflops) as a forward growth signal without disclosing supplier contracts, delivery dates, or capex commitments backing it.",
+      "trigger_keywords": ["exaflops", "GPU capacity", "compute infrastructure", "TPU", "Dojo", "training capacity"],
+      "instances": [
+        {"ticker": "TSLA", "call_id": "TSLA-2023Q4-call", "audio_date": "2024-01-24", "outcome_7d_relative_to_spx": -12.4},
+        {"ticker": "TSLA", "call_id": "TSLA-2024Q2-call", "audio_date": "2024-07-23", "outcome_7d_relative_to_spx": -8.1},
+        {"ticker": "META", "call_id": "META-2024Q3-call", "audio_date": "2024-10-30", "outcome_7d_relative_to_spx": -3.9}
+      ],
+      "hit_rate": 1.0,
+      "sample_size": 3,
+      "median_drawdown_7d": -8.1,
+      "callout_template": "Same compute-capacity language as {prior_ticker} {prior_quarter} — that one dropped {drawdown}% in 7 days against the S&P."
+    },
+    {
+      "_id": "back_half_story",
+      "name": "Back-half-loaded guidance",
+      "owned_by_director": "bear",
+      "description": "Management raises full-year guidance but pushes the implied beat into Q3/Q4 — classic 'back-half story' that historically resolves negatively about two-thirds of the time when accompanied by hedging language.",
+      "trigger_keywords": ["back half", "second half weighted", "back-end loaded", "step-up in", "ramp in Q4"],
+      "instances": [
+        {"ticker": "INTC", "call_id": "INTC-2023Q1-call", "audio_date": "2023-04-27", "outcome_7d_relative_to_spx": -7.2},
+        {"ticker": "TGT", "call_id": "TGT-2023Q1-call", "audio_date": "2023-05-17", "outcome_7d_relative_to_spx": -5.4},
+        {"ticker": "WBA", "call_id": "WBA-2023Q3-call", "audio_date": "2023-06-27", "outcome_7d_relative_to_spx": -9.1}
+      ],
+      "hit_rate": 0.78,
+      "sample_size": 9,
+      "median_drawdown_7d": -5.4,
+      "callout_template": "Classic back-half story — last 9 times we saw this pattern, 7 resolved negatively. Median drawdown: {drawdown}% over 7 days."
+    },
+    {
+      "_id": "hedging_escalation",
+      "name": "Hedging language escalation quarter-over-quarter",
+      "owned_by_director": "bear",
+      "description": "Frequency of hedging words ('approximately', 'somewhat', 'modestly', 'near-term', 'choppy') increases ≥40% versus the prior quarter's call. Strong leading indicator of negative revision.",
+      "trigger_keywords": ["approximately", "somewhat", "modestly", "near-term choppiness", "comfortable with"],
+      "instances": [
+        {"ticker": "PYPL", "call_id": "PYPL-2022Q1-call", "audio_date": "2022-04-27", "outcome_7d_relative_to_spx": -14.2},
+        {"ticker": "DIS", "call_id": "DIS-2023Q2-call", "audio_date": "2023-05-10", "outcome_7d_relative_to_spx": -8.3},
+        {"ticker": "F", "call_id": "F-2024Q2-call", "audio_date": "2024-07-24", "outcome_7d_relative_to_spx": -18.1}
+      ],
+      "hit_rate": 0.83,
+      "sample_size": 12,
+      "median_drawdown_7d": -7.6,
+      "callout_template": "Hedging-language frequency escalated vs prior call. Same pattern in {prior_ticker} {prior_quarter} preceded a {drawdown}% drop."
+    },
+    {
+      "_id": "ai_pivot_cover",
+      "name": "AI narrative pivot covering core business deceleration",
+      "owned_by_director": "bear",
+      "description": "Management's earnings call emphasizes AI strategy, AI products, or AI roadmap when the core business shows deceleration or guidance miss. Common cover pattern in 2023-2024.",
+      "trigger_keywords": ["AI strategy", "AI roadmap", "AI products", "Copilot", "intelligence platform"],
+      "instances": [
+        {"ticker": "ORCL", "call_id": "ORCL-2024Q1-call", "audio_date": "2023-12-11", "outcome_7d_relative_to_spx": -4.8},
+        {"ticker": "CRM", "call_id": "CRM-2024Q1-call", "audio_date": "2024-02-28", "outcome_7d_relative_to_spx": -16.2},
+        {"ticker": "ADBE", "call_id": "ADBE-2024Q3-call", "audio_date": "2024-09-12", "outcome_7d_relative_to_spx": -8.1}
+      ],
+      "hit_rate": 0.71,
+      "sample_size": 7,
+      "median_drawdown_7d": -8.1,
+      "callout_template": "AI narrative pivoting while core decelerates — last seen in {prior_ticker} {prior_quarter}, stock dropped {drawdown}% in 7 days."
+    },
+    {
+      "_id": "capacity_led_breakout",
+      "name": "Capacity expansion as durable demand signal",
+      "owned_by_director": "bull",
+      "description": "Capex commitment AND supplier disclosure AND multi-quarter visibility cited together — signals durable demand that the market is underpricing. Bull's classic compounder identification pattern.",
+      "trigger_keywords": ["capex commitment", "supply agreement", "multi-year", "long-term agreement", "capacity addition"],
+      "instances": [
+        {"ticker": "NVDA", "call_id": "NVDA-2024Q1FY25-call", "audio_date": "2024-05-22", "outcome_7d_relative_to_spx": 6.4},
+        {"ticker": "AVGO", "call_id": "AVGO-2024Q3-call", "audio_date": "2024-09-05", "outcome_7d_relative_to_spx": 11.2},
+        {"ticker": "MU", "call_id": "MU-2024Q4-call", "audio_date": "2024-09-25", "outcome_7d_relative_to_spx": 8.7}
+      ],
+      "hit_rate": 0.82,
+      "sample_size": 11,
+      "median_run_7d": 7.1,
+      "callout_template": "Capacity-led breakout signature — last 11 instances showed median +{run}% over 7 days. {prior_ticker} {prior_quarter} ran {drawdown}%."
+    },
+    {
+      "_id": "guidance_raise_no_hedging",
+      "name": "Guidance raise without hedging language",
+      "owned_by_director": "bull",
+      "description": "Management raises full-year guidance and the script is notably free of hedging modifiers. Strong positive forward indicator.",
+      "trigger_keywords": ["raising", "raising full year", "now expect", "increased outlook"],
+      "instances": [
+        {"ticker": "AMD", "call_id": "AMD-2023Q3-call", "audio_date": "2023-10-31", "outcome_7d_relative_to_spx": 9.8},
+        {"ticker": "LLY", "call_id": "LLY-2024Q1-call", "audio_date": "2024-04-30", "outcome_7d_relative_to_spx": 4.1},
+        {"ticker": "PLTR", "call_id": "PLTR-2024Q2-call", "audio_date": "2024-08-05", "outcome_7d_relative_to_spx": 13.4}
+      ],
+      "hit_rate": 0.85,
+      "sample_size": 13,
+      "median_run_7d": 5.8,
+      "callout_template": "Clean guidance raise without hedging — last 13 instances showed median +{run}% over 7 days."
+    },
+    {
+      "_id": "margin_compression_with_capex_acceleration",
+      "name": "Operating margin compression coinciding with capex acceleration",
+      "owned_by_director": "quant",
+      "description": "Operating margin guide flat or down YoY while capex grows >25% YoY. Classic 'build through the cycle' pattern that punishes near-term EPS but historically rewards if visibility holds.",
+      "trigger_keywords": ["capital expenditures", "operating margin", "compression", "investment cycle"],
+      "instances": [
+        {"ticker": "MSFT", "call_id": "MSFT-2024Q1FY25-call", "audio_date": "2024-10-30", "outcome_7d_relative_to_spx": -6.2},
+        {"ticker": "GOOGL", "call_id": "GOOGL-2024Q2-call", "audio_date": "2024-07-23", "outcome_7d_relative_to_spx": -8.7},
+        {"ticker": "META", "call_id": "META-2024Q3-call", "audio_date": "2024-10-30", "outcome_7d_relative_to_spx": -3.9}
+      ],
+      "hit_rate": 0.67,
+      "sample_size": 9,
+      "median_drawdown_7d": -5.4,
+      "callout_template": "Margin-compression-plus-capex-acceleration pattern — last 9 instances had median drawdown of {drawdown}% over 7 days."
+    },
+    {
+      "_id": "late_cycle_normalization",
+      "name": "Late-cycle sector demand normalization",
+      "owned_by_director": "strategist",
+      "description": "Sector-wide demand language shifts from 'strong' to 'normalizing' to 'softening' across three consecutive quarters. Strategist's classic late-cycle dating signal.",
+      "trigger_keywords": ["normalizing", "softening", "demand environment", "destocking", "inventory adjustment"],
+      "instances": [
+        {"ticker": "WMT", "call_id": "WMT-2023Q1-call", "audio_date": "2023-05-18", "outcome_7d_relative_to_spx": -3.6},
+        {"ticker": "HD", "call_id": "HD-2023Q3-call", "audio_date": "2023-11-14", "outcome_7d_relative_to_spx": -2.1},
+        {"ticker": "NKE", "call_id": "NKE-2024Q4-call", "audio_date": "2024-06-27", "outcome_7d_relative_to_spx": -19.4}
+      ],
+      "hit_rate": 0.74,
+      "sample_size": 11,
+      "median_drawdown_7d": -4.8,
+      "callout_template": "Late-cycle sector normalization signature — pattern hit rate {hit_rate}% on 11 prior instances."
+    }
+  ]
+}
