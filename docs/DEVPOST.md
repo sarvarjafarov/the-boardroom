@@ -12,7 +12,10 @@ video script.
 Always listening. Taps you when it matters. Debates it live. Four AI director personas with persistent personalities debate any live financial audio in real time against your portfolio.
 
 ### Hosted URL
-https://the-boardroom-760978959766.us-central1.run.app
+**Primary (working):** https://regulations-invitation-insert-calendar.trycloudflare.com
+*(Cloudflare quick tunnel to local uvicorn. Atlas M0's primary shard rejects SSL from GCP Cloud Run's NAT range — a known infrastructure block — so we tunnel from local where Atlas is reachable. The full Cloud Run container + Dockerfile + entrypoint still ship as proof of the production deploy path.)*
+
+**Cloud Run build:** https://the-boardroom-760978959766.us-central1.run.app
 
 ### Code repository
 https://github.com/sarvarjafarov/the-boardroom (public, MIT-licensed)

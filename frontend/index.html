@@ -25,13 +25,31 @@
       </div>
     </header>
 
+    <!-- Onboarding intro -->
+    <section class="max-w-3xl mx-auto px-4 mt-6 mb-4">
+      <div class="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5">
+        <h2 class="text-base font-semibold mb-2">What this is</h2>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          Four AI director personas — <span class="text-emerald-300">Bull</span>,
+          <span class="text-rose-300">Bear</span>,
+          <span class="text-sky-300">Quant</span>,
+          <span class="text-amber-300">Strategist</span> —
+          listen to live financial audio and <em>debate it in real time</em> against your portfolio.
+          A Chairman synthesizes the disagreement into a verdict with named dissent and one-tap Alpaca paper trades.
+        </p>
+        <ol class="text-sm text-slate-400 mt-3 space-y-1 pl-5 list-decimal">
+          <li>Click <strong>Try sample audio</strong> below (or paste any YouTube Live URL).</li>
+          <li>Watch the four columns score the audio as it streams.</li>
+          <li>When the directors disagree, see the rebuttals fly in the LIVE DEBATE strip.</li>
+          <li>Click <strong>Verdict now</strong> any time to see the Chairman's synthesis.</li>
+        </ol>
+      </div>
+    </section>
+
     <!-- Listening setup (visible only when no session) -->
-    <section id="setup-card" class="max-w-3xl mx-auto px-4 mt-6">
+    <section id="setup-card" class="max-w-3xl mx-auto px-4">
       <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
         <h2 class="text-sm font-semibold tracking-wider text-cyan-400 mb-3">START LISTENING</h2>
-        <p class="text-sm text-slate-400 mb-4">
-          Pin a live audio source. The boardroom debates the implications across your portfolio in real time.
-        </p>
         <form id="start-form" class="flex flex-col sm:flex-row gap-2">
           <input
             id="yt-url"
@@ -53,6 +71,13 @@
             Listen live
           </button>
         </form>
+        <button
+          id="try-sample"
+          type="button"
+          class="mt-3 w-full bg-cyan-950/40 hover:bg-cyan-900/40 border border-cyan-800/50 text-cyan-200 rounded-lg px-3 py-2.5 text-sm font-medium"
+        >
+          ⚡ Try sample audio (Tesla earnings — instant demo)
+        </button>
         <p class="text-xs text-slate-500 mt-3">
           Demo holdings: TSLA 12% · NVDA 18% · MSFT 16% · AAPL 10% · QQQ 20% · $50k cash
         </p>
@@ -86,6 +111,14 @@
             class="bg-rose-600 hover:bg-rose-500 text-white font-medium rounded-lg px-3 py-2 text-xs"
           >End session</button>
         </div>
+      </section>
+
+      <!-- Boot status hint (visible until first transcript line arrives) -->
+      <section id="boot-hint" class="bg-cyan-950/30 border border-cyan-800/40 rounded-2xl p-3 text-xs text-cyan-200 flex items-center gap-2">
+        <span class="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+        <span id="boot-hint-text">
+          Connecting to audio… Gemini Live warms up the transcript in ~20–30 s, then directors start scoring.
+        </span>
       </section>
 
       <!-- Layout: transcript stream + director debate columns -->

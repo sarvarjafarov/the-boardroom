@@ -54,6 +54,18 @@ $("#start-form").addEventListener("submit", async (e) => {
   const url = $("#yt-url").value.trim();
   const ticker = $("#ticker").value.trim().toUpperCase();
   if (!url) return;
+  await startSession(url, ticker);
+});
+
+const SAMPLE_URL = "https://www.youtube.com/watch?v=L0EHHfb_zwk";
+const SAMPLE_TICKER = "TSLA";
+$("#try-sample")?.addEventListener("click", async () => {
+  $("#yt-url").value = SAMPLE_URL;
+  $("#ticker").value = SAMPLE_TICKER;
+  await startSession(SAMPLE_URL, SAMPLE_TICKER);
+});
+
+async function startSession(url, ticker) {
   setStatus("starting…", "bg-amber-500");
   try {
     const r = await fetch(`${API_BASE}/api/sources/youtube_live`, {
@@ -68,7 +80,7 @@ $("#start-form").addEventListener("submit", async (e) => {
     setStatus(`error: ${err.message.slice(0, 80)}`, "bg-rose-500");
     console.error(err);
   }
-});
+}
 
 $("#end-session").addEventListener("click", endSession);
 $("#verdict-now").addEventListener("click", verdictNow);
@@ -163,6 +175,9 @@ function handleEvent(msg) {
 const TRANSCRIPT_MAX_LINES = 80;
 function appendTranscriptLine(line) {
   const feed = $("#transcript-feed");
+  // Hide the boot hint the moment the first real transcript line arrives.
+  const hint = document.getElementById("boot-hint");
+  if (hint && !hint.classList.contains("hidden")) hint.classList.add("hidden");
   const row = document.createElement("div");
   row.className = "transcript-line";
   const speaker = line.speaker_role || line.speaker_raw || "?";

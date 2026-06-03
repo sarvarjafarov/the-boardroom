@@ -116,10 +116,31 @@ cd frontend && python3 -m http.server 3000
 
 ## 🌐 Live Demo
 
-**Hosted URL:** https://the-boardroom-760978959766.us-central1.run.app
+**Demo URL:** https://regulations-invitation-insert-calendar.trycloudflare.com *(Cloudflare quick tunnel to a local uvicorn instance — see Atlas-vs-GCP note below)*
+**Cloud Run build:** https://the-boardroom-760978959766.us-central1.run.app *(container deployed and serving traffic, but blocked on Atlas SSL handshakes; see deployment notes)*
 **Repo:** https://github.com/sarvarjafarov/the-boardroom
 
-Try it: paste a YouTube live URL of a financial news show, earnings webcast, or Fed presser → click *Listen live* → watch four AI directors debate it in real time → see the verdict card → optionally tap *Ask the Chairman* to ask a follow-up by voice → optionally approve the recommended Alpaca paper trade.
+How to try it:
+1. Open the demo URL on phone or desktop Chrome.
+2. Click **⚡ Try sample audio (Tesla earnings — instant demo)** — pre-fills a working YouTube URL.
+3. Watch the four director columns score the audio as it streams.
+4. Click **Verdict now** any time to see the Chairman's synthesis.
+5. Optional: tap **Ask the Chairman** to ask a follow-up by voice.
+6. Optional: approve the recommended Alpaca paper trade in the impact card.
+
+### About the deployment
+
+The Cloud Run container builds, serves traffic, and runs the full code path —
+but Atlas M0 free-tier shards reject SSL handshakes from GCP Cloud Run's
+egress NAT range. This is a known Atlas-vs-GCP issue (`TLSV1_ALERT_INTERNAL_ERROR`
+on all three replica-set members). Atlas reaches our local machine
+fine. So for the demo URL we run uvicorn locally and expose it through
+a Cloudflare quick tunnel (free, no signup). The Cloud Run build stays
+live as proof that the single-container Dockerfile / entrypoint /
+production deployment path actually ship.
+
+The cleanest fix for V2 is Atlas M10+ with VPC peering or switching to
+Atlas Data API. For an 8-day hackathon, the tunnel is the right call.
 
 ## Hackathon roadmap
 
